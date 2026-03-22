@@ -100,16 +100,6 @@ def main():
         print(f"Положение: ({final_state[0]:.3f}, {final_state[1]:.3f}, {final_state[2]:.3f}) м")
         print(f"Скорость: ({final_state[3]:.3f}, {final_state[4]:.3f}, {final_state[5]:.3f}) м/с")
     
-    # Визуализация всех траекторий
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    for i, trajectory in enumerate(all_trajectories):
-        ax.plot(trajectory[:,0], trajectory[:,1], trajectory[:,2], label=f'Траектория {i+1}')
-    ax.set_xlabel('X (м)')
-    ax.set_ylabel('Y (м)')
-    ax.set_zlabel('Z (м)')
-    plt.legend()
-    plt.show()
 
 if __name__ == "__main__":
     main()
