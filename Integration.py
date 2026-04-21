@@ -26,10 +26,34 @@ Cd = 2.2
 A = 2.0  # м^2
 
 # Функция плотности атмосферы (в км)
-def atmospheric_density(h_km):
+def atmospheric_density(h_km, F107=150, Ap=4):
+
     if h_km < 0:
-        return 0
-    return 1.225e-12 * np.exp(-(h_km - 100) / 65)  # кг/м^3
+        return 0.0
+
+    if h_km <= 120:
+        # Тропосфера и стратосфера — упрощённая аппроксимация
+        rho = 1.225 * np.exp(-h_km / 8.5)
+    elif h_km <= 200:
+        # Мезосфера и нижняя термосфера
+        h_ref = 120.0
+        rho_ref = 8.9e-7  # кг/м³ на высоте 120 км
+        scale_height = 55.0 + 0.3 * (F107 - 150) + 2.0 * (Ap - 4)
+        rho = rho_ref * np.exp(-(h_km - h_ref) / scale_height)
+    elif h_km <= 500:
+        # Верхняя термосфера
+        h_ref = 200.0
+        rho_ref = 3.5e-10  # кг/м³ на высоте 200 км
+        scale_height = 65.0 + 0.4 * (F107 - 150) + 3.0 * (Ap - 4)
+        rho = rho_ref * np.exp(-(h_km - h_ref) / scale_height)
+    else:
+        # Экзосфера — экспоненциальное убывание
+        h_ref = 500.0
+        rho_ref = 1.0e-14  # кг/м³ на высоте 500 км
+        scale_height = 80.0 + 0.5 * (F107 - 150)
+        rho = rho_ref * np.exp(-(h_km - h_ref) / scale_height)
+
+    return rho
 
 # Функция положения Луны и Солнца с использованием Astropy
 def get_moon_sun_positions(t_seconds):
