@@ -119,21 +119,9 @@ def equations_of_motion(t, state):
         accel_total[2]
     ])
 
-# Функция для чтения данных из Excel
-def read_initial_conditions(file_path):
-    df = pd.read_excel(file_path)
-    initial_conditions = []
-    for index, row in df.iterrows():
-        initial_conditions.append(np.array([
-            row['x'], row['y'], row['z'],
-            row['Vx'], row['Vy'], row['Vz']
-        ]))
-    return initial_conditions
-
 # Основная логика программы
 def main():
-    file_path = 'file.xlsx'  # путь к файлу
-    initial_conditions = read_initial_conditions(file_path)
+    initial_state = np.array([5663505034.000, 743916736.000, -3824664144.000, 4347718.000, -1035138.000, 6256515.000]) # ЗДЕСЬ МОЖНО МЕНЯТЬ ДАННЫЕ x, y, z, Vx, Vy, Vz
 
     total_time = 86400 * 2  # 2 дня в секундах
     t_span = (0, total_time)
@@ -142,40 +130,40 @@ def main():
 
     all_trajectories = []
 
-    for i, initial_state in enumerate(initial_conditions):
-        print(f"\nРасчёт траектории {i+1} из {len(initial_conditions)}")
+    print(f"\nРасчёт траектории")
 
-        # Интегрирование методом DOP853 (RK853)
-        solution = solve_ivp(
-            fun=equations_of_motion,
-            t_span=t_span,
-            y0=initial_state,
-            method='DOP853',
-            rtol=rtol,
-            atol=atol,
-            dense_output=True
-        )
+    # Интегрирование методом DOP853 (RK853)
+    solution = solve_ivp(
+        fun=equations_of_motion,
+        t_span=t_span,
+        y0=initial_state,
+        method='DOP853',
+        rtol=rtol,
+        atol=atol,
+        dense_output=True
+     )
 
-        if solution.success:
-            print("Интегрирование успешно завершено")
-        else:
-            print(f"Ошибка при интегрировании траектории {i+1}:", solution.message)
-            continue
+    if solution.success:
+        print("Интегрирование успешно завершено")
+    else:
+        print(f"Ошибка при интегрировании траектории :", solution.message)
+        return
 
-        # Сохраняем результаты
-        trajectory = np.column_stack([solution.t, solution.y.T])
-        all_trajectories.append(trajectory)
+    # Сохраняем результаты
+    trajectory = np.column_stack([solution.t, solution.y.T])
+    all_trajectories.append(trajectory)
+    
+    # Выводим результаты
+    print(f"\nНачальные условия для траектории :")
+    print(f"Положение: ({initial_state[0]:.3f}, {initial_state[1]:.3f}, {initial_state[2]:.3f}) км")
+    print(f"Скорость: ({initial_state[3]:.3f}, {initial_state[4]:.3f}, {initial_state[5]:.3f}) км/с")
 
-        # Выводим результаты
-        print(f"\nНачальные условия для траектории {i+1}:")
-        print(f"Положение: ({initial_state[0]:.3f}, {initial_state[1]:.3f}, {initial_state[2]:.3f}) км")
-        print(f"Скорость: ({initial_state[3]:.3f}, {initial_state[4]:.3f}, {initial_state[5]:.3f}) км/с")
-
-        final_state = solution.y[:, -1]
-        print("\nКонечные условия:")
-        print(f"Положение: ({final_state[0]:.3f}, {final_state[1]:.3f}, {final_state[2]:.3f}) км")
-        print(f"Скорость: ({final_state[3]:.3f}, {final_state[4]:.3f}, {final_state[5]:.3f}) км/с")
+    final_state = solution.y[:, -1]
+    print("\nКонечные условия:")
+    print(f"Положение: ({final_state[0]:.3f}, {final_state[1]:.3f}, {final_state[2]:.3f}) км")
+    print(f"Скорость: ({final_state[3]:.3f}, {final_state[4]:.3f}, {final_state[5]:.3f}) км/с")
         
 if __name__ == "__main__":
     main()
+
 
