@@ -5,7 +5,8 @@ import pandas as pd
 from scipy.integrate import solve_ivp
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import solar_system_ephemeris, get_body_barycentric
+from astropy.coordinates import solar_system_ephemeris, get_body_barycentric, ICRS, GCRS
+from astropy.coordinates import CartesianRepresentation
 
 # Активируем эфемериды (используем встроенные для надёжности)
 try:
@@ -119,9 +120,52 @@ def equations_of_motion(t, state):
         accel_total[2]
     ])
 
+
+
+
+
+
+
+# Функция преобразования из J2000 (ICRS) в ГЦСК (GCRS)
+def j2000_to_gcrs(position, velocity, t_seconds):
+    """
+    Преобразует координаты из J2000 (ICRS) в ГЦСК (GCRS)
+    position, velocity — массивы [x, y, z] в км и км/с
+    t_seconds — время в секундах от начала отсчёта
+    """
+    t_astropy = Time('2023-01-01T00:00:00') + t_seconds * u.second
+
+
+    # Создаём координату в ICRS (J2000)
+    icrs_coord = ICRS(
+        x=position[0] * u.km,
+        y=position[1] * u.km,
+        z=position[2] * u.km,
+        v_x=velocity[0] * u.km/u.s,
+        v_y=velocity[1] * u.km/u.s,
+        v_z=velocity[2] * u.km/u.s,
+        representation_type=CartesianRepresentation,
+        differential_type='cartesian'
+    )
+
+    # Преобразуем в GCRS (ГЦСК)
+    gcrs_coord = icrs_coord.transform_to(GCRS(obstime=t_astropy))
+
+    # Извлекаем позиции и скорости в ГЦСК
+    pos_gcrs = gcrs_coord.cartesian.xyz.to(u.km).value
+    vel_gcrs = gcrs_coord.velocity.d_xyz.to(u.km/u.s).value
+
+    return pos_gcrs, vel_gcrs
+
+
+
+
+
+
+
 # Основная логика программы
 def main():
-    initial_state = np.array([5663505034.000, 743916736.000, -3824664144.000, 4347718.000, -1035138.000, 6256515.000]) # ЗДЕСЬ МОЖНО МЕНЯТЬ ДАННЫЕ x, y, z, Vx, Vy, Vz
+    initial_state = np.array([5663505034.000, 743916736.000, -3824664144.000, 4347718.000, -1035138.000, 6256515.000])
 
     total_time = 86400 * 2  # 2 дня в секундах
     t_span = (0, total_time)
@@ -159,9 +203,36 @@ def main():
     print(f"Скорость: ({initial_state[3]:.3f}, {initial_state[4]:.3f}, {initial_state[5]:.3f}) км/с")
 
     final_state = solution.y[:, -1]
+    final_time = solution.t[-1]
+
     print("\nКонечные условия:")
     print(f"Положение: ({final_state[0]:.3f}, {final_state[1]:.3f}, {final_state[2]:.3f}) км")
     print(f"Скорость: ({final_state[3]:.3f}, {final_state[4]:.3f}, {final_state[5]:.3f}) км/с")
+
+
+
+
+
+
+     # Преобразование конечных данных из J2000 (ICRS) в ГЦСК (GCRS)
+    final_position_j2000 = final_state[:3]
+    final_velocity_j2000 = final_state[3:]
+
+    pos_gcrs, vel_gcrs = j2000_to_gcrs(
+        final_position_j2000,
+        final_velocity_j2000,
+        final_time
+    )
+
+    # Вывод конечных данных в системе ГЦСК
+    print("\nКонечные условия в системе ГЦСК:")
+    print(f"Положение: ({pos_gcrs[0]:.3f}, {pos_gcrs[1]:.3f}, {pos_gcrs[2]:.3f}) км")
+    print(f"Скорость: ({vel_gcrs[0]:.3f}, {vel_gcrs[1]:.3f}, {vel_gcrs[2]:.3f}) км/с")
+
+
+
+
+
         
 if __name__ == "__main__":
     main()
