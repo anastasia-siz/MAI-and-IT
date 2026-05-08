@@ -126,6 +126,113 @@ def equations_of_motion(t, state):
 
 
 
+def get_nutation_matrix(jd):
+    """Вычисляет матрицу нутации N для перехода от истинной эпохи к средней"""
+    T = (jd - 2451545.0) / 36525.0
+    O = np.radians(125.0445 - 1934.1363 * T)
+    L = np.radians(280.4665 + 36000.7698 * T)
+    d_psi = np.radians(-17.20 * np.sin(O) - 1.32 * np.sin(2*L)) / 3600.0
+    d_eps = np.radians(9.20 * np.cos(O) + 0.57 * np.cos(2*L)) / 3600.0
+    eps0 = np.radians(23.439291 - 0.0130042 * T)
+    eps_true = eps0 + d_eps
+    Rx1 = np.array([[1, 0, 0], [0, np.cos(eps0), np.sin(eps0)], [0, -np.sin(eps0), np.cos(eps0)]])
+    Rz = np.array([[np.cos(-d_psi), -np.sin(-d_psi), 0], [np.sin(-d_psi), np.cos(-d_psi), 0], [0, 0, 1]])
+    Rx2 = np.array([[1, 0, 0], [0, np.cos(-eps_true), np.sin(-eps_true)], [0, -np.sin(-eps_true), np.cos(-eps_true)]])
+    # итоговая матрица нутации
+    return (Rx2 @ Rz @ Rx1)
+
+
+def get_precession_matrix(jd):
+    """Вычисляет матрицу прецессии P"""
+    T = (jd - 2451545.0) / 36525.0
+    x_p = (2306.2181 * T + 0.30188 * T**2 + 0.017998 * T**3) / 3600.0
+    y_p = (2306.2181 * T + 1.09468 * T**2 + 0.018203 * T**3) / 3600.0
+    z_p = (2004.3109 * T - 0.42665 * T**2 - 0.041833 * T**3) / 3600.0
+    # перевод в радианы для функций sin/cos
+    x_p, y_p, z_p = map(np.radians, [x_p, y_p, z_p])
+    # матрицы вращения для формирования P
+    Rz1 = np.array([[np.cos(-x_p), -np.sin(-x_p), 0],
+                    [np.sin(-x_p),  np.cos(-x_p), 0],
+            [0,              0,             1]])
+    Ry = np.array([[ np.cos(z_p),  0,  np.sin(z_p)],
+                  [ 0,              1,  0],
+                  [-np.sin(z_p),  0,  np.cos(z_p)]])
+    Rz2 = np.array([[np.cos(-z_p),    -np.sin(-z_p),    0],
+            [np.sin(-z_p),     np.cos(-z_p),    0],
+            [0,              0,             1]])
+    # матрица P переводит из J2000 в текущую эпоху jnow
+    P = Rz2 @ Ry @ Rz1
+    return P.T
+
+def get_gst(jd):
+    """Вычисляет GMST (Greenwich Mean Sidereal Time) — звёздное время в Гринвиче"""
+    T = (jd - 2451545.0) / 36525.0
+    gst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T**2
+    return np.radians(gst % 360)
+
+def horizontal_to_j2000(az, el, dist, lat, lon, jd):
+    """Преобразует горизонтальные координаты в систему J2000"""
+    az_r, el_r = np.radians(az), np.radians(el)
+    v_loc = np.array([
+        dist * np.cos(el_r) * np.cos(az_r),
+        dist * np.cos(el_r) * np.sin(az_r),
+        dist * np.sin(el_r)
+    ])
+    # учёт широты
+    lat_r = np.radians(lat)
+    R_lat = np.array([
+        [-np.sin(lat_r), 0, np.cos(lat_r)],
+        [0,              1, 0],
+        [np.cos(lat_r),  0, np.sin(lat_r)]
+    ])
+    v_fixed = R_lat @ v_loc
+    # учёт долготы и вращения Земли
+    lst = get_gst(jd) + np.radians(lon)
+    y_lst = np.array([
+        [np.cos(lst), -np.sin(lst), 0],
+        [np.sin(lst),  np.cos(lst), 0],
+        [0,            0,           1]
+    ])
+    z_nut = y_lst @ v_fixed
+    # учёт нутации
+    N_inv = get_nutation_matrix(jd)
+    v_prec = N_inv @ z_nut
+    # учёт прецессии (jnow -> J2000)
+    P_inv = get_precession_matrix(jd)
+    v_j2000 = P_inv @ v_prec
+    return v_j2000
+
+def j2000_to_geo(v_j2000, lat, lon, jd):
+    """Преобразует вектор из инерциальной системы J2000 в горизонтальную систему координат (Az, El, Dist)"""
+    # 1. Обратная прецессия (J2000 -> Jnow)
+    P = get_precession_matrix(jd)
+    v_prec = P @ v_j2000
+    # 2. Обратная нутация (Средняя эпоха -> Истинная эпоха)
+    N = get_nutation_matrix(jd)
+    z_nut = N.T @ v_prec
+    # 3. Обратный учёт вращения Земли и долготы
+    lst = get_gst(jd) + np.radians(lon)
+    y_lst = np.array([
+        [np.cos(lst), -np.sin(lst), 0],
+        [np.sin(lst),  np.cos(lst), 0],
+        [0,            0,           1]
+    ])
+    v_fixed = y_lst.T @ z_nut
+    # 4. Обратный учёт широты
+    lat_r = np.radians(lat)
+    R_lat = np.array([
+        [-np.sin(lat_r), 0, np.cos(lat_r)],
+        [0,              1, 0],
+        [np.cos(lat_r),  0, np.sin(lat_r)]
+    ])
+    v_loc = R_lat.T @ v_fixed
+    # 5. Переход из декартовых координат в сферические
+    dist = np.linalg.norm(v_loc)
+    el_r = np.arcsin(v_loc[2] / dist)
+    az_r = np.arctan2(v_loc[1], v_loc[0])
+    return np.degrees(az_r) % 360, np.degrees(el_r), dist
+
+
 # Функция преобразования из J2000 (ICRS) в ГЦСК (GCRS)
 def j2000_to_gcrs(position, velocity, t_seconds):
     """
@@ -134,8 +241,6 @@ def j2000_to_gcrs(position, velocity, t_seconds):
     t_seconds — время в секундах от начала отсчёта
     """
     t_astropy = Time('2023-01-01T00:00:00') + t_seconds * u.second
-
-
     # Создаём координату в ICRS (J2000)
     icrs_coord = ICRS(
         x=position[0] * u.km,
@@ -147,18 +252,12 @@ def j2000_to_gcrs(position, velocity, t_seconds):
         representation_type=CartesianRepresentation,
         differential_type='cartesian'
     )
-
     # Преобразуем в GCRS (ГЦСК)
     gcrs_coord = icrs_coord.transform_to(GCRS(obstime=t_astropy))
-
     # Извлекаем позиции и скорости в ГЦСК
     pos_gcrs = gcrs_coord.cartesian.xyz.to(u.km).value
     vel_gcrs = gcrs_coord.velocity.d_xyz.to(u.km/u.s).value
-
     return pos_gcrs, vel_gcrs
-
-
-
 
 
 
@@ -205,7 +304,7 @@ def main():
     final_state = solution.y[:, -1]
     final_time = solution.t[-1]
 
-    print("\nКонечные условия:")
+    print("\nКонечные условия (J200):")
     print(f"Положение: ({final_state[0]:.3f}, {final_state[1]:.3f}, {final_state[2]:.3f}) км")
     print(f"Скорость: ({final_state[3]:.3f}, {final_state[4]:.3f}, {final_state[5]:.3f}) км/с")
 
@@ -228,7 +327,6 @@ def main():
     print("\nКонечные условия в системе ГЦСК:")
     print(f"Положение: ({pos_gcrs[0]:.3f}, {pos_gcrs[1]:.3f}, {pos_gcrs[2]:.3f}) км")
     print(f"Скорость: ({vel_gcrs[0]:.3f}, {vel_gcrs[1]:.3f}, {vel_gcrs[2]:.3f}) км/с")
-
 
 
 
