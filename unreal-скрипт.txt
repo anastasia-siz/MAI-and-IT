@@ -1,0 +1,65 @@
+import unreal
+import json
+import os
+print("=== ЗАГРУЗКА ТРАЕКТОРИИ ===")
+# Путь к файлу с данными
+json_path = "C:/Users/Taisiya/Documents/Unreal Projects/test1/trajectory_data.json"
+if not os.path.exists(json_path):
+    raise Exception(f"Файл не найден: {json_path}")
+with open(json_path, "r") as f:
+    data = json.load(f)
+print(f"Загружено точек: {len(data['trajectory'])}")
+# Преобразуем в Vector
+trajectory_points = [unreal.Vector(p[0], p[1], p[2]) for p in data["trajectory"]]
+flight_speed = data["flight_speed"]
+moscow = data["moscow"]
+# ============================================================
+# ИЩЕМ ЗЕМЛЮ И УДАЛЯЕМ СТАРЫЕ АКТОРЫ
+# ============================================================
+all_actors = unreal.EditorLevelLibrary.get_all_level_actors()
+earth = None
+for actor in all_actors:
+    name = actor.get_actor_label()
+   
+    if "BP_SatellitePath" in name:
+        print("Удаляю старый спутник:", name)
+        unreal.EditorLevelLibrary.destroy_actor(actor)
+   
+    if "Object" in name or "GroundObject" in name:
+        print("Удаляю старый объект:", name)
+        unreal.EditorLevelLibrary.destroy_actor(actor)
+   
+    if "Earth" in name or "BP_Earth" in name:
+        earth = actor
+        print("Земля найдена:", name)
+if not earth:
+    raise Exception("Земля не найдена! Разместите BP_Earth на сцене.")
+# ============================================================
+# СОЗДАЁМ СПУТНИК
+# ============================================================
+bp_sat = unreal.EditorAssetLibrary.load_blueprint_class('/Game/BP_SatellitePath.BP_SatellitePath')
+if not bp_sat:
+    raise Exception("BP_SatellitePath не найден")
+sat_actor = unreal.EditorLevelLibrary.spawn_actor_from_class(bp_sat, trajectory_points[0])
+print("Спутник создан:", sat_actor.get_actor_label())
+sat_actor.set_editor_property("TrajectoryPoints", trajectory_points)
+sat_actor.set_editor_property("Speed", flight_speed)
+print(f"Точек: {len(trajectory_points)}, скорость: {flight_speed}")
+# ============================================================
+# СОЗДАЁМ ОБЪЕКТ НА ЗЕМЛЕ
+# ============================================================
+bp_obj = unreal.EditorAssetLibrary.load_blueprint_class('/Game/Object.Object')
+if not bp_obj:
+    raise Exception("Object не найден")
+obj = unreal.EditorLevelLibrary.spawn_actor_from_class(bp_obj, unreal.Vector(0, 0, 0))
+print("Объект создан:", obj.get_actor_label())
+obj.set_editor_property("Longitude", moscow["longitude"])
+obj.set_editor_property("Latitude", moscow["latitude"])
+obj.set_editor_property("EarthRadius", moscow["earth_radius"])
+obj.set_editor_property("Earth Actor", earth)
+print("Объект привязан к:", earth.get_actor_label())
+# ============================================================
+# СОХРАНЕНИЕ
+# ============================================================
+unreal.EditorLevelLibrary.save_current_level()
+print("=== ГОТОВО ===")
